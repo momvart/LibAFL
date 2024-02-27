@@ -23,7 +23,7 @@ use crate::{
     feedbacks::{Feedback, HasObserverName},
     inputs::UsesInput,
     monitors::{AggregatorOps, UserStats, UserStatsValue},
-    observers::{MapObserver, Observer, ObserversTuple, UsesObserver},
+    observers::{MapObserver, Observer, ObserversTuple, TrackingHinted, UsesObserver},
     state::{HasMetadata, HasNamedMetadata, State},
     Error,
 };
@@ -368,8 +368,6 @@ where
 pub struct MapFeedback<N, O, R, S, T> {
     /// For tracking, always keep indexes and/or novelties, even if the map isn't considered `interesting`.
     always_track: bool,
-    /// Indexes used in the last observation
-    indexes: bool,
     /// New indexes observed in the last observation
     novelties: Option<Vec<usize>>,
     /// Name identifier of this instance
@@ -393,7 +391,7 @@ where
 impl<N, O, R, S, T> Feedback<S> for MapFeedback<N, O, R, S, T>
 where
     N: IsNovel<T>,
-    O: MapObserver<Entry = T> + for<'it> AsIter<'it, Item = T>,
+    O: MapObserver<Entry = T> + for<'it> AsIter<'it, Item = T> + TrackingHinted,
     R: Reducer<T>,
     S: State + HasNamedMetadata,
     T: Default + Copy + Serialize + for<'de> Deserialize<'de> + PartialEq + Debug + 'static,
@@ -462,7 +460,7 @@ where
         }
 
         let history_map = map_state.history_map.as_mut_slice();
-        if self.indexes {
+        if O::INDICES {
             let mut indices = Vec::new();
 
             for (i, value) in observer
@@ -494,7 +492,7 @@ where
 #[rustversion::nightly]
 impl<O, S> Feedback<S> for MapFeedback<DifferentIsNovel, O, MaxReducer, S, u8>
 where
-    O: MapObserver<Entry = u8> + AsSlice<Entry = u8>,
+    O: MapObserver<Entry = u8> + AsSlice<Entry = u8> + TrackingHinted,
     for<'it> O: AsIter<'it, Item = u8>,
     S: State + HasNamedMetadata,
 {
@@ -664,7 +662,7 @@ impl<N, O, R, S, T> MapFeedback<N, O, R, S, T>
 where
     T: PartialEq + Default + Copy + 'static + Serialize + DeserializeOwned + Debug,
     R: Reducer<T>,
-    O: MapObserver<Entry = T>,
+    O: MapObserver<Entry = T> + TrackingHinted,
     for<'it> O: AsIter<'it, Item = T>,
     N: IsNovel<T>,
     S: UsesInput + HasNamedMetadata,
@@ -673,22 +671,7 @@ where
     #[must_use]
     pub fn new(map_observer: &O) -> Self {
         Self {
-            indexes: false,
-            novelties: None,
-            name: MAPFEEDBACK_PREFIX.to_string() + map_observer.name(),
-            observer_name: map_observer.name().to_string(),
-            stats_name: create_stats_name(map_observer.name()),
-            always_track: false,
-            phantom: PhantomData,
-        }
-    }
-
-    /// Create new `MapFeedback` specifying if it must track indexes of used entries and/or novelties
-    #[must_use]
-    pub fn tracking(map_observer: &O, track_indexes: bool, track_novelties: bool) -> Self {
-        Self {
-            indexes: track_indexes,
-            novelties: if track_novelties { Some(vec![]) } else { None },
+            novelties: if O::NOVELTIES { Some(vec![]) } else { None },
             name: MAPFEEDBACK_PREFIX.to_string() + map_observer.name(),
             observer_name: map_observer.name().to_string(),
             stats_name: create_stats_name(map_observer.name()),
@@ -701,8 +684,7 @@ where
     #[must_use]
     pub fn with_names(name: &'static str, observer_name: &'static str) -> Self {
         Self {
-            indexes: false,
-            novelties: None,
+            novelties: if O::NOVELTIES { Some(vec![]) } else { None },
             name: name.to_string(),
             observer_name: observer_name.to_string(),
             stats_name: create_stats_name(name),
@@ -724,30 +706,10 @@ where
     #[must_use]
     pub fn with_name(name: &'static str, map_observer: &O) -> Self {
         Self {
-            indexes: false,
-            novelties: None,
+            novelties: if O::NOVELTIES { Some(vec![]) } else { None },
             name: name.to_string(),
             observer_name: map_observer.name().to_string(),
             stats_name: create_stats_name(name),
-            always_track: false,
-            phantom: PhantomData,
-        }
-    }
-
-    /// Create new `MapFeedback` specifying if it must track indexes of used entries and/or novelties
-    #[must_use]
-    pub fn with_names_tracking(
-        name: &'static str,
-        observer_name: &'static str,
-        track_indexes: bool,
-        track_novelties: bool,
-    ) -> Self {
-        Self {
-            indexes: track_indexes,
-            novelties: if track_novelties { Some(vec![]) } else { None },
-            observer_name: observer_name.to_string(),
-            stats_name: create_stats_name(name),
-            name: name.to_string(),
             always_track: false,
             phantom: PhantomData,
         }
