@@ -6,7 +6,7 @@ use alloc::{
 };
 use core::{cmp::Ordering, fmt::Debug, marker::PhantomData, ops::Range};
 
-use libafl_bolts::{rands::Rand, tuples::MatchName};
+use libafl_bolts::{rands::Rand, tuples::MatchName, Named};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -55,26 +55,27 @@ impl Ord for Earlier {
 
 /// The mutational stage using power schedules
 #[derive(Clone, Debug)]
-pub struct ColorizationStage<EM, O, E, Z> {
+pub struct ColorizationStage<EM, O, E, Z, A> {
     map_observer_name: String,
     #[allow(clippy::type_complexity)]
-    phantom: PhantomData<(E, EM, O, Z)>,
+    phantom: PhantomData<(EM, O, E, Z, A)>,
 }
 
-impl<EM, O, E, Z> UsesState for ColorizationStage<EM, O, E, Z>
+impl<EM, O, E, Z, A> UsesState for ColorizationStage<EM, O, E, Z, A>
 where
     E: UsesState,
 {
     type State = E::State;
 }
 
-impl<E, EM, O, Z> Stage<E, EM, Z> for ColorizationStage<EM, O, E, Z>
+impl<E, EM, O, Z, A> Stage<E, EM, Z> for ColorizationStage<EM, O, E, Z, A>
 where
     EM: UsesState<State = E::State> + EventFirer,
     E: HasObservers + Executor<EM, Z>,
     E::State: HasCorpus + HasMetadata + HasRand,
     E::Input: HasBytesVec,
     O: MapObserver,
+    A: AsRef<O> + Named,
     Z: UsesState<State = E::State>,
 {
     type Progress = (); // TODO this stage needs resume
@@ -134,10 +135,11 @@ impl TaintMetadata {
 
 libafl_bolts::impl_serdeany!(TaintMetadata);
 
-impl<EM, O, E, Z> ColorizationStage<EM, O, E, Z>
+impl<EM, O, E, Z, A> ColorizationStage<EM, O, E, Z, A>
 where
     EM: UsesState<State = E::State> + EventFirer,
     O: MapObserver,
+    A: AsRef<O> + Named,
     E: HasObservers + Executor<EM, Z>,
     E::State: HasCorpus + HasMetadata + HasRand,
     E::Input: HasBytesVec,
@@ -287,9 +289,9 @@ where
 
     #[must_use]
     /// Creates a new [`ColorizationStage`]
-    pub fn new(map_observer_name: &O) -> Self {
+    pub fn new(map_observer: &A) -> Self {
         Self {
-            map_observer_name: map_observer_name.name().to_string(),
+            map_observer_name: map_observer.name().to_string(),
             phantom: PhantomData,
         }
     }
@@ -309,8 +311,9 @@ where
 
         let observer = executor
             .observers()
-            .match_name::<O>(name)
-            .ok_or_else(|| Error::key_not_found("MapObserver not found".to_string()))?;
+            .match_name::<A>(name)
+            .ok_or_else(|| Error::key_not_found("MapObserver not found".to_string()))?
+            .as_ref();
 
         let hash = observer.hash() as usize;
 

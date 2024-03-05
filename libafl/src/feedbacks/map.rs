@@ -384,7 +384,6 @@ pub struct MapFeedback<N, O, R, S, T, A> {
 impl<N, O, R, S, T, A> UsesObserver<S> for MapFeedback<N, O, R, S, T, A>
 where
     S: UsesInput,
-    O: Observer<S>,
     A: AsRef<O> + Observer<S>,
 {
     type Observer = A;
@@ -651,12 +650,8 @@ impl<N, O, R, S, T, A> Named for MapFeedback<N, O, R, S, T, A> {
 
 impl<N, O, R, S, T, A> HasObserverName for MapFeedback<N, O, R, S, T, A>
 where
-    T: PartialEq + Default + Copy + 'static + Serialize + DeserializeOwned + Debug,
-    R: Reducer<T>,
-    N: IsNovel<T>,
-    O: MapObserver<Entry = T>,
-    for<'it> O: AsIter<'it, Item = T>,
-    S: HasNamedMetadata,
+    O: Named,
+    A: AsRef<O>,
 {
     #[inline]
     fn observer_name(&self) -> &str {
@@ -809,43 +804,35 @@ where
 
 /// A [`ReachabilityFeedback`] reports if a target has been reached.
 #[derive(Clone, Debug)]
-pub struct ReachabilityFeedback<O, S> {
+pub struct ReachabilityFeedback<O, S, A> {
     name: String,
     target_idx: Vec<usize>,
-    phantom: PhantomData<(O, S)>,
+    phantom: PhantomData<(O, S, A)>,
 }
 
-impl<O, S> ReachabilityFeedback<O, S>
+impl<O, S, A> ReachabilityFeedback<O, S, A>
 where
     O: MapObserver<Entry = usize>,
+    A: AsRef<O> + Named,
     for<'it> O: AsIter<'it, Item = usize>,
 {
     /// Creates a new [`ReachabilityFeedback`] for a [`MapObserver`].
     #[must_use]
-    pub fn new(map_observer: &O) -> Self {
+    pub fn new(map_observer: &A) -> Self {
         Self {
             name: map_observer.name().to_string(),
             target_idx: vec![],
             phantom: PhantomData,
         }
     }
-
-    /// Creates a new [`ReachabilityFeedback`] for a [`MapObserver`] with the given `name`.
-    #[must_use]
-    pub fn with_name(name: &'static str) -> Self {
-        Self {
-            name: name.to_string(),
-            target_idx: vec![],
-            phantom: PhantomData,
-        }
-    }
 }
 
-impl<O, S> Feedback<S> for ReachabilityFeedback<O, S>
+impl<O, S, A> Feedback<S> for ReachabilityFeedback<O, S, A>
 where
     S: State,
     O: MapObserver<Entry = usize>,
     for<'it> O: AsIter<'it, Item = usize>,
+    A: AsRef<O>,
 {
     #[allow(clippy::wrong_self_convention)]
     fn is_interesting<EM, OT>(
@@ -861,7 +848,7 @@ where
         OT: ObserversTuple<S>,
     {
         // TODO Replace with match_name_type when stable
-        let observer = observers.match_name::<O>(&self.name).unwrap();
+        let observer = observers.match_name::<A>(&self.name).unwrap().as_ref();
         let mut hit_target: bool = false;
         //check if we've hit any targets.
         for (i, &elem) in observer.as_iter().enumerate() {
@@ -903,11 +890,7 @@ where
     }
 }
 
-impl<O, S> Named for ReachabilityFeedback<O, S>
-where
-    O: MapObserver<Entry = usize>,
-    for<'it> O: AsIter<'it, Item = usize>,
-{
+impl<O, S, A> Named for ReachabilityFeedback<O, S, A> {
     #[inline]
     fn name(&self) -> &str {
         self.name.as_str()
@@ -962,6 +945,7 @@ pub mod pybind {
                     $map_observer_type_name, /* PythonMapObserverI8 */
                     $my_std_state_type_name,
                     $datatype,
+                    $map_observer_type_name
                 >,
             }
 
