@@ -178,6 +178,7 @@ fn saturating_next_power_of_two<T: PrimInt>(n: T) -> T {
 /// Consider as novelty if the reduced value is different from the old value.
 #[derive(Clone, Debug)]
 pub struct DifferentIsNovel {}
+
 impl<T> IsNovel<T> for DifferentIsNovel
 where
     T: PartialEq + Default + Copy + 'static,
@@ -191,6 +192,7 @@ where
 /// Only consider as novel the values which are at least the next pow2 class of the old value
 #[derive(Clone, Debug)]
 pub struct NextPow2IsNovel {}
+
 impl<T> IsNovel<T> for NextPow2IsNovel
 where
     T: PrimInt + Default + Copy + 'static,
@@ -211,6 +213,7 @@ where
 /// Only consider `T::one()` or `T::max_value()`, if they are bigger than the old value, as novel
 #[derive(Clone, Debug)]
 pub struct OneOrFilledIsNovel {}
+
 impl<T> IsNovel<T> for OneOrFilledIsNovel
 where
     T: PrimInt + Default + Copy + 'static,
@@ -243,6 +246,7 @@ impl AsSlice for MapIndexesMetadata {
         self.list.as_slice()
     }
 }
+
 impl AsMutSlice for MapIndexesMetadata {
     type Entry = usize;
     /// Convert to a slice
@@ -290,6 +294,7 @@ impl AsSlice for MapNoveltiesMetadata {
         self.list.as_slice()
     }
 }
+
 impl AsMutSlice for MapNoveltiesMetadata {
     type Entry = usize;
     /// Convert to a slice
@@ -298,6 +303,7 @@ impl AsMutSlice for MapNoveltiesMetadata {
         self.list.as_mut_slice()
     }
 }
+
 impl MapNoveltiesMetadata {
     /// Creates a new [`struct@MapNoveltiesMetadata`]
     #[must_use]
@@ -727,7 +733,10 @@ where
     {
         let mut interesting = false;
         // TODO Replace with match_name_type when stable
-        let observer = observers.match_name::<O>(&self.observer_name).unwrap();
+        let observer = observers
+            .match_name::<A>(&self.observer_name)
+            .unwrap()
+            .as_ref();
 
         let map_state = state
             .named_metadata_map_mut()
